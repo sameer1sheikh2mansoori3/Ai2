@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Real-time Video Calling</title>
+  <style>
+    #localVideo,
+    #remoteVideo {
+      width: 320px;
+      height: 240px;
+      border: 1px solid gray;
+    }
+  </style>
+</head>
+<body>
+  <h1>Real-time Video Calling</h1>
+  <video id="localVideo" autoplay muted></video>
+  <video id="remoteVideo" autoplay></video>
+  <br>
+  <button id="startButton" disabled>Start Call</button>
+  <button id="hangupButton" disabled>Hang Up</button>
+
+  <script src="https://cdn.socket.io/4.3.2/socket.io.min.js"></script>
+  <script>
+    const socket = io(); // Connect to the signaling server
+
+    let localStream;
+    let pc;
+    const localVideo = document.querySelector('#localVideo');
+    const remoteVideo = document.querySelector('#remoteVideo');
+    const startButton = document.querySelector('#startButton');
+    const hangupButton = document.querySelector('#hangupButton');
+
+    // Start the call
+    startButton.addEventListener('click', startCall);
+
+    // Hang up the call
+    hangupButton.addEventListener('click', hangupCall);
+
+    // Get the local media stream
+    navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+      .then(stream => {
+        localStream = stream;
+        localVideo.srcObject = stream;
+        startButton.disabled = false; // Enable the Start Call button
+      })
+      .catch(error => {
+        console.error('Error accessing media devices', error);
+      });
+
+    // Handle incoming call request
+    socket.on('incoming-call', handleIncomingCall);
+
+    function startCall() {
+      // Create the peer connection
+      pc = new RTCPeerConnection();
+
+      // Add local stream to the peer connection
+      localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+
+      // Send the offer to the signaling server
+      pc.createOffer()
+        .then(offer => pc.setLocalDescription(offer))
+        .then(() => {
+          socket.emit('offer', pc.localDescription);
+          hangupButton.disabled = false; // Enable the Hang Up button
+        })
+        .catch(error => {
+          console.error('Error creating or setting local description', error);
+        });
+
+      // Handle incoming ICE candidates from the signaling server
+      socket.on('ice-candidate', handleIncomingICECandidate);
+
+      // Handle incoming answer from the signaling server
+      socket.on('answer', handleIncomingAnswer);
+    }
+
+    function hangupCall() {
+      pc.close();
+      pc = null;
+      localStream.getTracks().forEach(track => track.stop());
+      localVideo.srcObject = null;
+      remoteVideo.srcObject = null;
+      hangupButton.disabled = true; // Disable the Hang Up button
+      socket.off('ice-candidate', handleIncomingICECandidate);
+      socket.off('answer', handleIncomingAnswer);
+    }
+
+    function handleIncomingCall(offer) {
+      pc = new RTCPeerConnection();
+
+      // Add local stream to the peer connection
+      localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+
+      // Set the remote description
+      pc.setRemoteDescription(new RTCSessionDescription(offer))
+        .then(() => {
+          // Create an answer to the offer
+          return pc.createAnswer();
+        })
+        .then(answer => {
+          // Set the local description and send the answer to the signaling server
+          return pc.setLocalDescription(answer)
+            .then(() => {
+              socket.emit('answer', pc.localDescription);
+              hangupButton.disabled = false; // Enable the Hang Up button
+            });
+        })
+        .catch(error => {
+          console.error('Error setting remote or local description', error);
+        });
+
+      // Handle incoming ICE candidates from the signaling server
+      socket.on('ice-candidate', handleIncomingICECandidate);
+    }
+
+    function handleIncomingICECandidate(candidate) {
+      pc.addIceCandidate(new RTCIceCandidate(candidate))
+        .catch(error => {
+          console.error('Error adding ICE candidate', error);
+        });
+    }
+
+    function handleIncomingAnswer(answer) {
+      pc.setRemoteDescription(new RTCSessionDescription(answer))
+        .catch(error => {
+          console.error('Error setting remote description', error);
+        });
+    }
+  </script>
+</body>
+</html>
