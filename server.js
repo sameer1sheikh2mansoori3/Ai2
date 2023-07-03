@@ -7,7 +7,7 @@ const server = http.createServer(app);
 const io = socketIO(server);
 
 // Serve the static files
-app.use(express.static(__dirname + '/public'));
+app.use(express.static(__dirname ));
 
 // Handle incoming WebSocket connections
 io.on('connection', socket => {
@@ -33,6 +33,6 @@ io.on('connection', socket => {
 // Start the server
 const port = process.env.PORT || 3000;
 server.listen(port, () => {
-    console.log(__dirname + '/public');
+    console.log(__dirname );
   console.log(`Server running on port ${port}`);
 });
